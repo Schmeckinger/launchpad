@@ -1,0 +1,1 @@
+C:\Users\Sminc\Desktop\launchpad\target\release\launchpad.exe: C:\Users\Sminc\Desktop\launchpad\src\launchpad.rs C:\Users\Sminc\Desktop\launchpad\src\main.rs C:\Users\Sminc\Desktop\launchpad\src\win_midi.rs C:\Users\Sminc\Desktop\launchpad\src\win_midi_sys.rs
