@@ -6,7 +6,5 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1"
-once_cell = "1"
 thiserror = "1"
-futures = "0.3"
 winapi = { version = "0.3", features = ["mmeapi", "mmsystem"] }

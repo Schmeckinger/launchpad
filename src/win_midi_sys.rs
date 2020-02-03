@@ -1,14 +1,16 @@
 use std::os::windows::ffi::OsStringExt;
+use std::sync::atomic::AtomicPtr;
 use std::{ffi, mem};
 use thiserror::Error;
 use winapi::shared::{basetsd, minwindef, ntdef};
 use winapi::um::{mmeapi, mmsystem};
 
+//TODO: Text
 #[derive(Error, Debug)]
-#[error("MMError({0})")]
-pub struct MMError(mmsystem::MMRESULT);
+#[error("MidiError({0})")]
+pub struct MidiError(mmsystem::MMRESULT);
 
-pub type MMResult<T> = Result<T, MMError>;
+pub type MidiResult<T> = Result<T, MidiError>;
 
 pub fn midi_in_count() -> minwindef::UINT {
     unsafe { mmeapi::midiInGetNumDevs() }
@@ -23,7 +25,7 @@ pub struct MidiInCaps {
     pub pid: minwindef::WORD,
 }
 
-pub fn midi_in_get_caps(id: basetsd::UINT_PTR) -> MMResult<MidiInCaps> {
+pub fn midi_in_get_caps(id: basetsd::UINT_PTR) -> MidiResult<MidiInCaps> {
     let mut caps = mem::MaybeUninit::<mmsystem::MIDIINCAPSW>::zeroed();
 
     map_mmresult(
@@ -47,7 +49,7 @@ pub fn midi_in_get_caps(id: basetsd::UINT_PTR) -> MMResult<MidiInCaps> {
     )
 }
 
-pub type MidiInHandle = mmsystem::HMIDIIN;
+pub type MidiInHandle = AtomicPtr<mmsystem::HMIDIIN__>;
 
 pub type MidiInCb = extern "C" fn(
     mmsystem::HMIDIIN,
@@ -61,7 +63,7 @@ pub fn midi_in_open(
     id: minwindef::UINT,
     num: basetsd::DWORD_PTR,
     midi_in_cb: MidiInCb,
-) -> MMResult<MidiInHandle> {
+) -> MidiResult<MidiInHandle> {
     let mut dev = mem::MaybeUninit::<mmsystem::HMIDIIN>::zeroed();
 
     map_mmresult(
@@ -74,24 +76,24 @@ pub fn midi_in_open(
                 mmsystem::CALLBACK_FUNCTION,
             )
         },
-        || unsafe { dev.assume_init() },
+        || MidiInHandle::new(unsafe { dev.assume_init() }),
     )
 }
 
-pub fn midi_in_close(handle: MidiInHandle) -> MMResult<()> {
-    mmresult(unsafe { mmeapi::midiInClose(handle) })
+pub fn midi_in_close(handle: &mut MidiInHandle) -> MidiResult<()> {
+    mmresult(unsafe { mmeapi::midiInClose(*(handle.get_mut())) })
 }
 
-pub fn midi_in_reset(handle: MidiInHandle) -> MMResult<()> {
-    mmresult(unsafe { mmeapi::midiInReset(handle) })
+pub fn midi_in_reset(handle: &mut MidiInHandle) -> MidiResult<()> {
+    mmresult(unsafe { mmeapi::midiInReset(*(handle.get_mut())) })
 }
 
-pub fn midi_in_start(handle: MidiInHandle) -> MMResult<()> {
-    mmresult(unsafe { mmeapi::midiInStart(handle) })
+pub fn midi_in_start(handle: &mut MidiInHandle) -> MidiResult<()> {
+    mmresult(unsafe { mmeapi::midiInStart(*(handle.get_mut())) })
 }
 
-pub fn midi_in_stop(handle: MidiInHandle) -> MMResult<()> {
-    mmresult(unsafe { mmeapi::midiInStop(handle) })
+pub fn midi_in_stop(handle: &mut MidiInHandle) -> MidiResult<()> {
+    mmresult(unsafe { mmeapi::midiInStop(*(handle.get_mut())) })
 }
 
 pub fn midi_out_count() -> minwindef::UINT {
@@ -112,7 +114,7 @@ pub struct MidiOutCaps {
     pub voices: minwindef::WORD,
 }
 
-pub fn midi_out_get_caps(id: basetsd::UINT_PTR) -> MMResult<MidiOutCaps> {
+pub fn midi_out_get_caps(id: basetsd::UINT_PTR) -> MidiResult<MidiOutCaps> {
     let mut caps = mem::MaybeUninit::<mmsystem::MIDIOUTCAPSW>::zeroed();
 
     map_mmresult(
@@ -141,43 +143,43 @@ pub fn midi_out_get_caps(id: basetsd::UINT_PTR) -> MMResult<MidiOutCaps> {
     )
 }
 
-pub type MidiOutHandle = mmsystem::HMIDIOUT;
+pub type MidiOutHandle = AtomicPtr<mmsystem::HMIDIOUT__>;
 
-pub fn midi_out_open(id: minwindef::UINT) -> MMResult<MidiOutHandle> {
+pub fn midi_out_open(id: minwindef::UINT) -> MidiResult<MidiOutHandle> {
     let mut dev = mem::MaybeUninit::<mmsystem::HMIDIOUT>::zeroed();
 
     map_mmresult(
         unsafe { mmeapi::midiOutOpen(dev.as_mut_ptr() as _, id, 0, 0, mmsystem::CALLBACK_NULL) },
-        || unsafe { dev.assume_init() },
+        || MidiOutHandle::new(unsafe { dev.assume_init() }),
     )
 }
 
-pub fn midi_out_close(handle: MidiOutHandle) -> MMResult<()> {
-    mmresult(unsafe { mmeapi::midiOutClose(handle) })
+pub fn midi_out_close(handle: &mut MidiOutHandle) -> MidiResult<()> {
+    mmresult(unsafe { mmeapi::midiOutClose(*(handle.get_mut())) })
 }
 
-pub fn midi_out_reset(handle: MidiOutHandle) -> MMResult<()> {
-    mmresult(unsafe { mmeapi::midiOutReset(handle) })
+pub fn midi_out_reset(handle: &mut MidiOutHandle) -> MidiResult<()> {
+    mmresult(unsafe { mmeapi::midiOutReset(*(handle.get_mut())) })
 }
 
-pub fn midi_out_msg(handle: MidiOutHandle, msg: minwindef::DWORD) -> MMResult<()> {
-    mmresult(unsafe { mmeapi::midiOutShortMsg(handle, msg) })
+pub fn midi_out_msg(handle: &mut MidiOutHandle, msg: minwindef::DWORD) -> MidiResult<()> {
+    mmresult(unsafe { mmeapi::midiOutShortMsg(*(handle.get_mut()), msg) })
 }
 
-fn mmresult(mmresult: mmsystem::MMRESULT) -> MMResult<()> {
+fn mmresult(mmresult: mmsystem::MMRESULT) -> MidiResult<()> {
     match mmresult {
         mmsystem::MMSYSERR_NOERROR => Ok(()),
-        err => Err(MMError(err)),
+        err => Err(MidiError(err)),
     }
 }
 
-fn map_mmresult<F, T>(mmresult: mmsystem::MMRESULT, succ: F) -> MMResult<T>
+fn map_mmresult<F, T>(mmresult: mmsystem::MMRESULT, succ: F) -> MidiResult<T>
 where
     F: Fn() -> T,
 {
     match mmresult {
         mmsystem::MMSYSERR_NOERROR => Ok(succ()),
-        err => Err(MMError(err)),
+        err => Err(MidiError(err)),
     }
 }
 
