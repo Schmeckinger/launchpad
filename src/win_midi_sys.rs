@@ -7,7 +7,7 @@ use winapi::um::{mmeapi, mmsystem};
 
 //TODO: Text
 #[derive(Error, Debug)]
-#[error("MidiError({0})")]
+#[error("MMError({0})")]
 pub struct MidiError(mmsystem::MMRESULT);
 
 pub type MidiResult<T> = Result<T, MidiError>;

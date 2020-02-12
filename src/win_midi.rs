@@ -39,7 +39,8 @@ pub struct MidiMsg {
     pub param2: basetsd::DWORD_PTR,
 }
 
-type BoxedMsgTx = Box<mpsc::Sender<MidiMsg>>;
+type MsgTx = mpsc::Sender<MidiMsg>;
+type BoxedMsgTx = Box<MsgTx>;
 
 extern "C" fn midi_in_cb(
     _handle: mmsystem::HMIDIIN,
@@ -48,23 +49,18 @@ extern "C" fn midi_in_cb(
     param1: basetsd::DWORD_PTR,
     param2: basetsd::DWORD_PTR,
 ) {
-    let opt_sender: BoxedMsgTx = unsafe { Box::from_raw(inst as _) };
+    let sender: &MsgTx = unsafe { &*(inst as *const MsgTx) };
     match msg {
-        mmsystem::MM_MIM_OPEN => {
-            Box::leak(opt_sender);
-        }
+        mmsystem::MM_MIM_OPEN => (),
         mmsystem::MM_MIM_CLOSE => {
-            std::mem::drop(opt_sender);
+            std::mem::drop(unsafe { BoxedMsgTx::from_raw(inst as _) });
         }
         _ => {
-            opt_sender
-                .send(MidiMsg {
-                    msg,
-                    param1,
-                    param2,
-                })
-                .unwrap();
-            Box::leak(opt_sender);
+            let _ = sender.send(MidiMsg {
+                msg,
+                param1,
+                param2,
+            });
         }
     }
 }
@@ -106,7 +102,11 @@ impl InDev {
         Ok(sys::midi_in_stop(&mut self.handle)?)
     }
 
-    pub fn msgs(&self) -> impl Iterator<Item = MidiMsg> + '_ {
+    pub fn current_msgs(&mut self) -> impl Iterator<Item = MidiMsg> + '_ {
+        self.msg_rx.try_iter()
+    }
+
+    pub fn msgs(&mut self) -> impl Iterator<Item = MidiMsg> + '_ {
         self.msg_rx.iter()
     }
 }
